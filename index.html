@@ -173,7 +173,7 @@
             y: 0,
             width: canvas.width,
             height: canvas.height,
-            update: function(target) {
+            update: function(target, dt) {
                 // Target is the player/squirrel
                 // Center camera on player with some room for lookahead
                 let targetX = target.x - this.width / 3;
@@ -223,7 +223,7 @@
             invulnerable: false,
             invulnerableTimer: 0,
             
-            update: function() {
+            update: function(dt) {
                 // Movement
                 let acceleration = 0;
                 
@@ -236,18 +236,18 @@
                     this.facingRight = true;
                 }
                 
-                // Apply acceleration
-                this.velocityX += acceleration;
+                // Apply acceleration with delta time
+                this.velocityX += acceleration * dt * 60;
                 
-                // Apply friction
-                this.velocityX *= FRICTION;
+                // Apply friction with delta time
+                this.velocityX *= Math.pow(FRICTION, dt * 60);
                 
                 // Limit speed
                 this.velocityX = Math.max(Math.min(this.velocityX, MAX_SPEED), -MAX_SPEED);
                 
                 // Apply gravity if not wall climbing
                 if (!this.wallClimbing) {
-                    this.velocityY += GRAVITY;
+                    this.velocityY += GRAVITY * dt * 60;
                 }
                 
                 // Check if on ground
@@ -309,27 +309,28 @@
                 
                 // Handle invulnerability
                 if (this.invulnerable) {
-                    this.invulnerableTimer--;
+                    this.invulnerableTimer -= dt * 60;
                     if (this.invulnerableTimer <= 0) {
                         this.invulnerable = false;
                     }
                 }
                 
-                // Update animation - MUCH slower for smoother walk cycle with less bouncing
-                this.frames++;
+                // Update animation frames based on time instead of frames
+                this.frames += dt * 60;
                 
-                // Only update animation frame every 24 frames (much slower bouncing animation)
-                if (this.frames % this.animationSpeed === 0) {
+                // Update animation frame every N virtual frames
+                if (Math.floor(this.frames / this.animationSpeed) > 
+                    Math.floor((this.frames - dt * 60) / this.animationSpeed)) {
                     this.animationFrame = (this.animationFrame + 1) % 4;
                 }
                 
-                // Make animation speed based on movement - slower when still, but always slow for bounce
+                // Make animation speed based on movement
                 if (Math.abs(this.velocityX) < 0.5) {
-                    this.animationSpeed = 36; // Very slow when standing still
+                    this.animationSpeed = 36;
                 } else if (Math.abs(this.velocityX) < 3) {
-                    this.animationSpeed = 30; // Slow when walking
+                    this.animationSpeed = 30;
                 } else {
-                    this.animationSpeed = 24; // Still relatively slow when running
+                    this.animationSpeed = 24;
                 }
                 
                 // Update health display
@@ -549,7 +550,7 @@
                 height: ACORN_SIZE,
                 velocityX: squirrel.facingRight ? ACORN_SPEED : -ACORN_SPEED,
                 
-                update: function() {
+                update: function(dt) {
                     this.x += this.velocityX;
                     
                     // Check if out of bounds
@@ -630,7 +631,7 @@
                 chaseSpeed: 1.8,     // Faster speed when chasing
                 normalSpeed: 1,      // Normal patrol speed
                 
-                update: function() {
+                update: function(dt) {
                     // Check for player proximity for AI improvement
                     let dx = squirrel.x - this.x;
                     let dy = squirrel.y - this.y;
@@ -650,7 +651,8 @@
                         this.velocityX = this.velocityX > 0 ? this.normalSpeed : -this.normalSpeed;
                     }
                     
-                    this.x += this.velocityX;
+                    // Apply movement with delta time
+                    this.x += this.velocityX * dt * 60;
                     
                     // Change direction if hitting a wall or edge
                     if (this.velocityX > 0) {
@@ -703,9 +705,10 @@
                         }
                     }
                     
-                    // Update animation - faster when chasing
-                    this.frames++;
-                    if (this.frames % (chasingPlayer ? 5 : 8) === 0) {
+                    // Update animation with delta time
+                    this.frames += dt * 60;
+                    if (Math.floor(this.frames / (chasingPlayer ? 5 : 8)) > 
+                        Math.floor((this.frames - dt * 60) / (chasingPlayer ? 5 : 8))) {
                         this.animationFrame = (this.animationFrame + 1) % 3;
                     }
                     
@@ -783,15 +786,15 @@
                 aggressionLevel: 0.8, // Higher chance to attack when in range
                 attackSpeed: 3.5,    // Faster attack speed
                 
-                update: function() {
-                    this.frames++;
-                    if (this.frames % 6 === 0) {
+                update: function(dt) {
+                    this.frames += dt * 60;
+                    if (Math.floor(this.frames / 6) > Math.floor((this.frames - dt * 60) / 6)) {
                         this.animationFrame = (this.animationFrame + 1) % 4;
                     }
                     
                     if (this.state === "idle") {
-                        // Slight hover movement
-                        this.y += Math.sin(this.frames * 0.1) * 0.5;
+                        // Hover movement with delta time
+                        this.y = this.initialY + Math.sin(this.frames * 0.1) * 5;
                         
                         // Check if player is nearby to attack
                         let dx = squirrel.x - this.x;
@@ -811,24 +814,17 @@
                             this.velocityY = Math.sin(angle) * this.attackSpeed;
                         }
                     } else if (this.state === "attacking") {
-                        // Move towards player with some tracking
-                        this.x += this.velocityX;
-                        this.y += this.velocityY;
+                        // Move with delta time
+                        this.x += this.velocityX * dt * 60;
+                        this.y += this.velocityY * dt * 60;
                         
-                        // Slight homing effect - adjust trajectory toward player
-                        if (this.frames % 10 === 0) {
+                        // Homing effect with delta time
+                        if (Math.floor(this.frames / 10) > Math.floor((this.frames - dt * 60) / 10)) {
                             let dx = squirrel.x - this.x;
                             let dy = squirrel.y - this.y;
                             let angle = Math.atan2(dy, dx);
-                            
-                            // Slightly adjust velocity to track player
-                            this.velocityX = this.velocityX * 0.9 + Math.cos(angle) * this.attackSpeed * 0.1;
-                            this.velocityY = this.velocityY * 0.9 + Math.sin(angle) * this.attackSpeed * 0.1;
-                            
-                            // Normalize the velocity
-                            let speed = Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY);
-                            this.velocityX = (this.velocityX / speed) * this.attackSpeed;
-                            this.velocityY = (this.velocityY / speed) * this.attackSpeed;
+                            this.velocityX += Math.cos(angle) * 0.1 * dt * 60;
+                            this.velocityY += Math.sin(angle) * 0.1 * dt * 60;
                         }
                         
                         // Check if far from initial position
@@ -852,9 +848,14 @@
                             this.velocityY = Math.sin(angle) * 2;
                         }
                     } else if (this.state === "returning") {
-                        // Return to initial position
-                        this.x += this.velocityX;
-                        this.y += this.velocityY;
+                        // Return movement with delta time
+                        let returnDx = this.initialX - this.x;
+                        let returnDy = this.initialY - this.y;
+                        let returnAngle = Math.atan2(returnDy, returnDx);
+                        this.velocityX = Math.cos(returnAngle) * 2;
+                        this.velocityY = Math.sin(returnAngle) * 2;
+                        this.x += this.velocityX * dt * 60;
+                        this.y += this.velocityY * dt * 60;
                         
                         // Check if close to initial position
                         let dx = this.initialX - this.x;
@@ -971,10 +972,20 @@
                 animationFrame: 0,
                 playerTracking: 0.7, // How well it tracks the player horizontally
                 
-                update: function() {
-                    this.frames++;
-                    if (this.frames % 10 === 0) {
+                update: function(dt) {
+                    this.frames += dt * 60;
+                    if (Math.floor(this.frames / 10) > Math.floor((this.frames - dt * 60) / 10)) {
                         this.animationFrame = (this.animationFrame + 1) % 3;
+                    }
+                    
+                    // Web swinging movement with delta time
+                    this.swingAngle += this.swingSpeed * dt * 60;
+                    this.x = this.anchorX + Math.sin(this.swingAngle) * this.swingRadius;
+                    this.y = this.anchorY + Math.abs(Math.cos(this.swingAngle)) * this.swingRadius;
+                    
+                    // Player tracking with delta time
+                    if (Math.abs(squirrel.x - this.x) < 200) {
+                        this.anchorX += (squirrel.x - this.anchorX) * this.playerTracking * dt * 60;
                     }
                     
                     // Check if player is nearby horizontally
@@ -1169,9 +1180,9 @@
                 frames: 0,
                 glowValue: 0,
                 
-                update: function() {
-                    // Pulse effect animation
-                    this.frames++;
+                update: function(dt) {
+                    // Update glow animation with delta time
+                    this.frames += dt * 60;
                     this.glowValue = Math.sin(this.frames * 0.05) * 0.2 + 0.8;
                     
                     // Check collision with player for jump boost
@@ -1285,131 +1296,11 @@
         }
         
         // Level Design
-        const levelWidth = 50 * TILE_SIZE; // 50 tiles wide
+        const levelWidth = 80 * TILE_SIZE; // 50 tiles wide
         const levelHeight = 20 * TILE_SIZE; // 20 tiles high
         
         // 0 = empty, 1 = wall, 2 = spawn point, 3 = dark wall
         let levelMap = [
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,1,1,1,1,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-        ];
-        
-        // Design underground level with more detail
-        levelMap = [
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-        ];
-        
-        // Create a more complex level with platforms, pits, and obstacles
-        levelMap = [
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,3,1],
-            [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-        ];
-        
-        // Create an even more complex underground level with obstacles and enemies
-        levelMap = [
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,3,1],
-            [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-        ];
-        
-        // Create a detailed expanded level with more platforms
-        levelMap = [
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
-            [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-        ];
-        
-        // Create an even more complex expanded level
-        levelMap = [
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
             [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
             [1,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
@@ -1515,7 +1406,7 @@
             // Spawn initial collectible
             spawnRandomCollectible();
             
-            // Find spawn point in the level map
+            // Find spawn point in the level map and initialize player position
             for (let y = 0; y < levelMap.length; y++) {
                 for (let x = 0; x < levelMap[y].length; x++) {
                     if (levelMap[y][x] === 2) {
@@ -1535,25 +1426,6 @@
             }
         }
             
-            // Find spawn point in the level map
-            for (let y = 0; y < levelMap.length; y++) {
-                for (let x = 0; x < levelMap[y].length; x++) {
-                    if (levelMap[y][x] === 2) {
-                        squirrel.x = x * TILE_SIZE;
-                        squirrel.y = y * TILE_SIZE;
-                        squirrel.velocityX = 0;
-                        squirrel.velocityY = 0;
-                        squirrel.health = MAX_HEALTH;
-                        squirrel.invulnerable = false;
-                        
-                        // Replace spawn point with empty space
-                        levelMap[y][x] = 0;
-                        
-                        break;
-                    }
-                }
-            }
-        }
         
         // Draw level
         function drawLevel(ctx) {
@@ -1651,15 +1523,24 @@
             }
         }
         
-        // Game Loop
-        function gameLoop() {
+        // Add timestamp tracking at the top with other game constants
+        let lastTimestamp = 0;
+        
+        // Modify the game loop to use delta time
+        function gameLoop(timestamp) {
             if (!gameRunning) return;
+            
+            // Calculate delta time in seconds
+            let dt = (timestamp - lastTimestamp) / 1000;
+            // Cap dt to prevent huge jumps if tab was in background
+            dt = Math.min(dt, 1/30);
+            lastTimestamp = timestamp;
             
             // Clear the canvas
             offscreenCtx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Update game entities
-            updateGame();
+            // Update game entities with delta time
+            updateGame(dt);
             
             // Draw everything
             drawGame(offscreenCtx);
@@ -1670,6 +1551,45 @@
             
             // Continue the game loop
             requestAnimationFrame(gameLoop);
+        }
+        
+        // Modify updateGame to use delta time
+        function updateGame(dt) {
+            // Update player with delta time
+            squirrel.update(dt);
+            
+            // Update camera position
+            camera.update(squirrel, dt);
+            
+            // Update acorns
+            acorns = acorns.filter(acorn => acorn.update(dt));
+            
+            // Update enemies
+            enemies = enemies.filter(enemy => enemy.update(dt));
+            
+            // Update obstacles
+            obstacles = obstacles.filter(obstacle => obstacle.update(dt));
+            
+            // Update spikes
+            spikes = spikes.filter(spike => spike.update(dt));
+            
+            // Update collectibles
+            collectibles = collectibles.filter(collectible => collectible.update(dt));
+            
+            // Update portal if it exists
+            if (portal) {
+                portal.update(dt);
+            }
+            
+            // Update particles
+            particles = particles.filter(particle => {
+                particle.x += particle.velocityX * dt * 60;
+                particle.y += particle.velocityY * dt * 60;
+                particle.velocityY += 0.1 * dt * 60; // Gravity
+                particle.lifetime--;
+                
+                return particle.lifetime > 0;
+            });
         }
         
         // Spikes
@@ -1683,7 +1603,7 @@
                 width: 32,
                 height: 16,
                 
-                update: function() {
+                update: function(dt) {
                     // Check collision with player
                     if (this.collidesWith(squirrel) && !squirrel.invulnerable) {
                         squirrel.takeDamage(SPIKE_DAMAGE);
@@ -1756,9 +1676,9 @@
                 collected: false,
                 floatOffset: Math.random() * Math.PI * 2, // Random starting position for float animation
                 
-                update: function() {
-                    // Float up and down
-                    this.y = y + Math.sin(Date.now() / 500 + this.floatOffset) * 3;
+                update: function(dt) {
+                    // Float movement with delta time (using Date.now() for smooth animation)
+                    this.y = this.initialY + Math.sin(Date.now() / 500 + this.floatOffset) * 3;
                     
                     // Check collision with player
                     if (!this.collected && this.collidesWith(squirrel)) {
@@ -1838,10 +1758,7 @@
                 }
             };
         }
-        
-        // Portal for level completion
-        let portal = null;
-        
+        // Create the portal object
         function createPortal(x, y) {
             return {
                 x: x,
@@ -1851,8 +1768,8 @@
                 frames: 0,
                 active: true,
                 
-                update: function() {
-                    this.frames++;
+                update: function(dt) {
+                    this.frames += dt * 60;
                     
                     // Check collision with player
                     if (this.active && this.collidesWith(squirrel)) {
@@ -1945,8 +1862,6 @@
         // Function to spawn the portal when win condition is met
         function spawnPortal() {
             // Find a good spot for the portal - on a platform away from the player
-            // Let's try to place it further in the level to encourage exploration
-            
             let bestX = levelWidth - 200; // Near the end of the level
             let bestY = 0;
             
@@ -2053,45 +1968,6 @@
             document.getElementById("restart-button").textContent = "Play Again";
         }
         
-        // Update game entities
-        function updateGame() {
-            // Update player
-            squirrel.update();
-            
-            // Update camera position
-            camera.update(squirrel);
-            
-            // Update acorns
-            acorns = acorns.filter(acorn => acorn.update());
-            
-            // Update enemies
-            enemies = enemies.filter(enemy => enemy.update());
-            
-            // Update obstacles
-            obstacles = obstacles.filter(obstacle => obstacle.update());
-            
-            // Update spikes
-            spikes = spikes.filter(spike => spike.update());
-            
-            // Update collectibles
-            collectibles = collectibles.filter(collectible => collectible.update());
-            
-            // Update portal if it exists
-            if (portal) {
-                portal.update();
-            }
-            
-            // Update particles
-            particles = particles.filter(particle => {
-                particle.x += particle.velocityX;
-                particle.y += particle.velocityY;
-                particle.velocityY += 0.1; // Gravity
-                particle.lifetime--;
-                
-                return particle.lifetime > 0;
-            });
-        }
-        
         // Draw game entities
         function drawGame(ctx) {
             // Draw level
@@ -2192,13 +2068,16 @@
             }
         });
         
-        // Game start
+        // Modify startGame to initialize timestamp
         function startGame() {
             // Hide start screen
             gameStartScreen.style.display = 'none';
             
             // Initialize level and entities
             initLevel();
+            
+            // Initialize timestamp
+            lastTimestamp = performance.now();
             
             // Start game loop
             gameRunning = true;
