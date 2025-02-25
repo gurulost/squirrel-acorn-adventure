@@ -551,7 +551,8 @@
                 velocityX: squirrel.facingRight ? ACORN_SPEED : -ACORN_SPEED,
                 
                 update: function(dt) {
-                    this.x += this.velocityX;
+                    // Apply movement with delta time
+                    this.x += this.velocityX * dt * 60;
                     
                     // Check if out of bounds
                     if (this.x < 0 || this.x > levelWidth || 
