@@ -86,6 +86,23 @@
             text-align: center;
             font-size: 16px;
         }
+        
+        .touchButton {
+            position: fixed;
+            width: 70px;
+            height: 70px;
+            background: rgba(255,255,255,0.5);
+            border-radius: 35px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            user-select: none;
+        }
+        #leftButton { bottom: 20px; left: 20px; }
+        #rightButton { bottom: 20px; left: 100px; }
+        #jumpButton { bottom: 20px; right: 100px; }
+        #attackButton { bottom: 20px; right: 20px; }
     </style>
 </head>
 <body>
@@ -116,12 +133,34 @@
             particles.push({
                 x: x,
                 y: y,
-                velocityX: vx,
-                velocityY: vy,
+                vx: vx,
+                vy: vy,
                 size: size,
                 lifetime: lifetime,
                 maxLifetime: lifetime,
-                color: color
+                color: color,
+                
+                update: function(dt) {
+                    // Use delta time for movement
+                    this.x += this.vx * dt * 60;
+                    this.y += this.vy * dt * 60;
+                    this.lifetime -= dt * 60;
+                    
+                    // Optional: add gravity to particles
+                    this.vy += 0.1 * dt * 60;
+                    
+                    return this.lifetime > 0;
+                },
+                
+                draw: function(ctx) {
+                    let alpha = this.lifetime / this.maxLifetime;
+                    ctx.globalAlpha = alpha;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x - camera.x, this.y - camera.y, this.size * alpha, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
             });
         }
         // Game Constants
@@ -551,7 +590,6 @@
                 velocityX: squirrel.facingRight ? ACORN_SPEED : -ACORN_SPEED,
                 
                 update: function(dt) {
-                    // Apply movement with delta time
                     this.x += this.velocityX * dt * 60;
                     
                     // Check if out of bounds
@@ -567,7 +605,9 @@
                     if (gridX >= 0 && gridX < levelMap[0].length && 
                         gridY >= 0 && gridY < levelMap.length) {
                         if (levelMap[gridY][gridX] === 1 || levelMap[gridY][gridX] === 3) {
-                            return false; // Remove acorn if it hits a wall
+                            // Create explosion effect when hitting a wall
+                            createAcornExplosion(this.x, this.y);
+                            return false; // Remove acorn
                         }
                     }
                     
@@ -575,7 +615,9 @@
                     for (let i = 0; i < enemies.length; i++) {
                         if (this.collidesWith(enemies[i])) {
                             enemies[i].takeDamage(1);
-                            return false; // Remove acorn after hitting enemy
+                            // Create explosion effect when hitting an enemy
+                            createAcornExplosion(this.x, this.y);
+                            return false; // Remove acorn
                         }
                     }
                     
@@ -961,132 +1003,91 @@
                 type: "spider",
                 x: x,
                 y: y,
-                width: 32,
-                height: 32,
-                initialY: y,
-                minY: y,
-                maxY: y + 150, // Longer web reach
-                velocityY: 1,
-                state: "descending", // descending, ascending, attacking
-                health: 3,
+                width: 24,
+                height: 24,
+                health: 2,
                 frames: 0,
                 animationFrame: 0,
-                playerTracking: 0.7, // How well it tracks the player horizontally
+                
+                // Add missing spider properties
+                anchorX: x,                              // Store original x as anchor
+                anchorY: y,                              // Store original y as anchor
+                swingAngle: Math.random() * Math.PI * 2, // Random starting angle
+                swingSpeed: 0.02 + Math.random() * 0.01, // Random swing speed
+                swingRadius: 30 + Math.random() * 20,    // Random swing radius
+                state: 'swinging',                       // Current state (swinging/dropping/returning)
+                dropSpeed: 0,                            // Current drop speed
+                maxDropSpeed: 5,                         // Maximum drop speed
+                detectionRange: 100,                     // Range to detect player below
+                returnSpeed: 2,                          // Speed to return to anchor point
                 
                 update: function(dt) {
                     this.frames += dt * 60;
-                    if (Math.floor(this.frames / 10) > Math.floor((this.frames - dt * 60) / 10)) {
-                        this.animationFrame = (this.animationFrame + 1) % 3;
+                    
+                    // Animation
+                    if (this.frames % 10 === 0) {
+                        this.animationFrame = (this.animationFrame + 1) % 2;
                     }
                     
-                    // Web swinging movement with delta time
-                    this.swingAngle += this.swingSpeed * dt * 60;
-                    this.x = this.anchorX + Math.sin(this.swingAngle) * this.swingRadius;
-                    this.y = this.anchorY + Math.abs(Math.cos(this.swingAngle)) * this.swingRadius;
-                    
-                    // Player tracking with delta time
-                    if (Math.abs(squirrel.x - this.x) < 200) {
-                        this.anchorX += (squirrel.x - this.anchorX) * this.playerTracking * dt * 60;
-                    }
-                    
-                    // Check if player is nearby horizontally
-                    let playerX = squirrel.x + squirrel.width/2;
-                    let spiderX = this.x + this.width/2;
-                    let horizontalDistance = Math.abs(playerX - spiderX);
-                    
-                    // Horizontal tracking when player is nearby but not directly below
-                    if (horizontalDistance < 120 && horizontalDistance > 30 && 
-                        squirrel.y > this.y && this.state !== "attacking") {
-                        // Move horizontally toward player
-                        if (playerX > spiderX) {
-                            this.x += this.playerTracking;
-                        } else {
-                            this.x -= this.playerTracking;
-                        }
-                    }
-                    
-                    if (this.state === "descending") {
-                        this.y += this.velocityY;
-                        
-                        if (this.y >= this.maxY) {
-                            this.state = "ascending";
-                            this.velocityY = -1;
-                        }
-                        
-                        // Check if player is directly below
-                        if (Math.abs(squirrel.x + squirrel.width/2 - (this.x + this.width/2)) < 30 &&
-                            squirrel.y > this.y) {
-                            this.state = "attacking";
-                            this.velocityY = 6; // Faster attack
-                        }
-                    } else if (this.state === "ascending") {
-                        this.y += this.velocityY;
-                        
-                        if (this.y <= this.minY) {
-                            this.state = "descending";
-                            this.velocityY = 1;
-                        }
-                        
-                        // Check if player is directly below
-                        if (Math.abs(squirrel.x + squirrel.width/2 - (this.x + this.width/2)) < 30 &&
-                            squirrel.y > this.y) {
-                            this.state = "attacking";
-                            this.velocityY = 6; // Faster attack
-                        }
-                    } else if (this.state === "attacking") {
-                        this.y += this.velocityY;
-                        
-                        // Check if hit ground
-                        let gridY = Math.floor((this.y + this.height) / TILE_SIZE);
-                        let gridX = Math.floor((this.x + this.width/2) / TILE_SIZE);
-                        
-                        if (gridY >= 0 && gridY < levelMap.length && 
-                            gridX >= 0 && gridX < levelMap[0].length) {
-                            if (levelMap[gridY][gridX] === 1 || levelMap[gridY][gridX] === 3) {
-                                this.state = "ascending";
-                                this.velocityY = -1;
+                    // State machine for spider behavior
+                    switch (this.state) {
+                        case 'swinging':
+                            // Update swing angle
+                            this.swingAngle += this.swingSpeed * dt * 60;
+                            
+                            // Calculate position based on swing
+                            this.x = this.anchorX + Math.cos(this.swingAngle) * this.swingRadius;
+                            this.y = this.anchorY + Math.abs(Math.sin(this.swingAngle) * this.swingRadius);
+                            
+                            // Check if player is below and within range
+                            if (Math.abs(squirrel.x - this.x) < this.detectionRange && 
+                                squirrel.y > this.y && 
+                                squirrel.y < this.y + 200) {
+                                this.state = 'dropping';
+                                this.dropSpeed = 0;
                             }
-                        }
-                        
-                        // Check if hit bottom of level
-                        if (this.y + this.height >= levelHeight) {
-                            this.state = "ascending";
-                            this.velocityY = -1;
-                        }
-                        
-                        // Check collision with player
-                        if (this.collidesWith(squirrel)) {
-                            // Check if player is jumping on enemy from above
-                            if (squirrel.velocityY > 0 && 
-                                squirrel.y + squirrel.height - 10 < this.y) {
-                                // Kill enemy
-                                this.health = 0;
-                                
-                                // Bounce player up a bit
-                                squirrel.velocityY = -8;
-                                
-                                // Create particle effect
-                                for (let i = 0; i < 15; i++) {
-                                    createParticle(
-                                        this.x + this.width/2,
-                                        this.y + this.height/2,
-                                        (Math.random() - 0.5) * 3,
-                                        (Math.random() - 0.5) * 3,
-                                        Math.random() * 3 + 1,
-                                        30,
-                                        '#000'
-                                    );
+                            break;
+                            
+                        case 'dropping':
+                            // Accelerate downward
+                            this.dropSpeed = Math.min(this.dropSpeed + 0.2 * dt * 60, this.maxDropSpeed);
+                            this.y += this.dropSpeed;
+                            
+                            // Check if hit ground or reached maximum drop distance
+                            let gridY = Math.floor((this.y + this.height) / TILE_SIZE);
+                            let gridX = Math.floor((this.x + this.width/2) / TILE_SIZE);
+                            
+                            if (gridY >= 0 && gridY < levelMap.length && 
+                                gridX >= 0 && gridX < levelMap[0].length) {
+                                if (levelMap[gridY][gridX] === 1 || levelMap[gridY][gridX] === 3 || 
+                                    this.y > this.anchorY + 200) {
+                                    this.state = 'returning';
                                 }
-                                
-                                // Check for win condition
-                                checkWinCondition();
-                            } else if (!squirrel.invulnerable) {
-                                // Otherwise damage player
-                                squirrel.takeDamage(ENEMY_DAMAGE);
-                                this.state = "ascending";
-                                this.velocityY = -1;
                             }
-                        }
+                            
+                            // Check collision with player
+                            if (this.collidesWith(squirrel) && !squirrel.invulnerable) {
+                                squirrel.takeDamage(1);
+                                this.state = 'returning';
+                            }
+                            break;
+                            
+                        case 'returning':
+                            // Move back toward anchor point
+                            let dx = this.anchorX + Math.cos(this.swingAngle) * this.swingRadius - this.x;
+                            let dy = this.anchorY + Math.abs(Math.sin(this.swingAngle) * this.swingRadius) - this.y;
+                            let dist = Math.sqrt(dx*dx + dy*dy);
+                            
+                            if (dist > this.returnSpeed * dt * 60) {
+                                this.x += (dx / dist) * this.returnSpeed * dt * 60;
+                                this.y += (dy / dist) * this.returnSpeed * dt * 60;
+                            } else {
+                                // Close enough to anchor, resume swinging
+                                this.x = this.anchorX + Math.cos(this.swingAngle) * this.swingRadius;
+                                this.y = this.anchorY + Math.abs(Math.sin(this.swingAngle) * this.swingRadius);
+                                this.state = 'swinging';
+                            }
+                            break;
                     }
                     
                     return this.health > 0;
@@ -1095,10 +1096,32 @@
                 takeDamage: function(amount) {
                     this.health -= amount;
                     
-                    // Return to ceiling if hit
-                    if (this.health > 0) {
-                        this.state = "ascending";
-                        this.velocityY = -2;
+                    // Create damage particles
+                    for (let i = 0; i < 5; i++) {
+                        createParticle(
+                            this.x + this.width/2,
+                            this.y + this.height/2,
+                            (Math.random() - 0.5) * 3,
+                            (Math.random() - 0.5) * 3,
+                            Math.random() * 3 + 1,
+                            20,
+                            '#8B0000'
+                        );
+                    }
+                    
+                    if (this.health <= 0) {
+                        // Create death particles
+                        for (let i = 0; i < 10; i++) {
+                            createParticle(
+                                this.x + this.width/2,
+                                this.y + this.height/2,
+                                (Math.random() - 0.5) * 4,
+                                (Math.random() - 0.5) * 4,
+                                Math.random() * 4 + 2,
+                                30,
+                                '#8B0000'
+                            );
+                        }
                     }
                 },
                 
@@ -1112,58 +1135,70 @@
                 draw: function(ctx) {
                     // Don't draw if offscreen
                     if (this.x + this.width < camera.x || this.x > camera.x + camera.width ||
-                        this.y - 50 > camera.y + camera.height) {
+                        this.y + this.height < camera.y || this.y > camera.y + camera.height) {
                         return;
                     }
                     
                     let drawX = this.x - camera.x;
                     let drawY = this.y - camera.y;
                     
-                    // Web line
-                    ctx.strokeStyle = "#ddd";
+                    // Draw web line
+                    ctx.strokeStyle = '#DDDDDD';
+                    ctx.lineWidth = 1;
                     ctx.beginPath();
-                    ctx.moveTo(drawX + this.width/2, drawY - (this.y - this.minY));
+                    ctx.moveTo(this.anchorX - camera.x, this.anchorY - camera.y);
                     ctx.lineTo(drawX + this.width/2, drawY);
                     ctx.stroke();
                     
+                    // Draw spider body
+                    ctx.fillStyle = '#222222';
+                    
                     // Body
-                    ctx.fillStyle = "#000";
                     ctx.beginPath();
-                    ctx.arc(drawX + this.width/2, drawY + this.height/2, 12, 0, Math.PI * 2);
+                    ctx.ellipse(drawX + this.width/2, drawY + this.height/2, this.width/2, this.height/2, 0, 0, Math.PI * 2);
                     ctx.fill();
                     
-                    // Legs - animated
-                    ctx.strokeStyle = "#000";
+                    // Eyes
+                    ctx.fillStyle = '#FF0000';
+                    ctx.beginPath();
+                    ctx.arc(drawX + this.width/2 - 4, drawY + this.height/2 - 3, 2, 0, Math.PI * 2);
+                    ctx.arc(drawX + this.width/2 + 4, drawY + this.height/2 - 3, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Legs
+                    ctx.strokeStyle = '#222222';
                     ctx.lineWidth = 2;
                     
-                    let legOffset = this.animationFrame * 3;
+                    // Draw legs with animation
+                    let legOffset = this.animationFrame === 0 ? 3 : -3;
                     
                     // Left legs
                     for (let i = 0; i < 4; i++) {
-                        let legY = drawY + 10 + i * 4;
-                        let offset = i % 2 === 0 ? legOffset : -legOffset;
-                        
+                        let yOffset = (i - 1.5) * 5;
                         ctx.beginPath();
-                        ctx.moveTo(drawX + this.width/2 - 10, legY);
-                        ctx.lineTo(drawX - 5 + offset, legY + 5 - offset);
+                        ctx.moveTo(drawX + this.width/2, drawY + this.height/2 + yOffset);
+                        ctx.quadraticCurveTo(
+                            drawX - 5, 
+                            drawY + this.height/2 + yOffset + ((i % 2 === 0) ? legOffset : -legOffset),
+                            drawX - 15, 
+                            drawY + this.height/2 + yOffset + ((i % 2 === 0) ? 8 : -8)
+                        );
                         ctx.stroke();
                     }
                     
                     // Right legs
                     for (let i = 0; i < 4; i++) {
-                        let legY = drawY + 10 + i * 4;
-                        let offset = i % 2 === 0 ? legOffset : -legOffset;
-                        
+                        let yOffset = (i - 1.5) * 5;
                         ctx.beginPath();
-                        ctx.moveTo(drawX + this.width/2 + 10, legY);
-                        ctx.lineTo(drawX + this.width + 5 - offset, legY + 5 - offset);
+                        ctx.moveTo(drawX + this.width/2, drawY + this.height/2 + yOffset);
+                        ctx.quadraticCurveTo(
+                            drawX + this.width + 5, 
+                            drawY + this.height/2 + yOffset + ((i % 2 === 0) ? -legOffset : legOffset),
+                            drawX + this.width + 15, 
+                            drawY + this.height/2 + yOffset + ((i % 2 === 0) ? 8 : -8)
+                        );
                         ctx.stroke();
                     }
-                    
-                    // Eyes
-                    ctx.fillStyle = "#f00";
-                    ctx.fillRect(drawX + this.width/2 - 6, drawY + this.height/2 - 4, 3, 3);
-                    ctx.fillRect(drawX + this.width/2 + 3, drawY + this.height/2 - 4, 3, 3);
                 }
             };
         }
@@ -1323,6 +1358,11 @@
             [1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1],
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
         ];
+        
+        // Add these variable declarations at the top of your script, with the other game variables
+        let playerStartX = 100;  // Default starting position 
+        let playerStartY = 100;
+        let totalCollectibles = 0;
         
         // Function to initialize level and entities
         function initLevel() {
@@ -1584,10 +1624,10 @@
             
             // Update particles
             particles = particles.filter(particle => {
-                particle.x += particle.velocityX * dt * 60;
-                particle.y += particle.velocityY * dt * 60;
-                particle.velocityY += 0.1 * dt * 60; // Gravity
-                particle.lifetime--;
+                particle.x += particle.vx * dt * 60;
+                particle.y += particle.vy * dt * 60;
+                particle.vy += 0.1 * dt * 60; // Gravity
+                particle.lifetime -= dt * 60;
                 
                 return particle.lifetime > 0;
             });
@@ -1667,6 +1707,49 @@
         // Collectibles
         let collectibles = [];
         
+        // Add a sounds object to store our audio elements
+        let sounds = {};
+        
+        // Define the playSound function with error handling
+        function playSound(name) {
+            // Check if sound exists before playing
+            if (sounds[name]) {
+                try {
+                    // Clone the sound to allow overlapping playback
+                    const sound = sounds[name].cloneNode();
+                    sound.volume = 0.5; // Set appropriate volume
+                    sound.play().catch(e => console.log("Sound play failed:", e));
+                } catch (err) {
+                    console.log("Error playing sound:", err);
+                }
+            } else {
+                console.log("Sound not found:", name);
+            }
+        }
+        
+        // Function to preload sounds
+        function loadSounds() {
+            // Define sounds to load
+            const soundFiles = {
+                'collect': 'sounds/collect.mp3',
+                'jump': 'sounds/jump.mp3',
+                'shoot': 'sounds/shoot.mp3',
+                'hurt': 'sounds/hurt.mp3',
+                'win': 'sounds/win.mp3'
+            };
+            
+            // Load each sound
+            for (const [name, path] of Object.entries(soundFiles)) {
+                try {
+                    sounds[name] = new Audio(path);
+                    // Optional: preload the audio
+                    sounds[name].load();
+                } catch (err) {
+                    console.log(`Failed to load sound ${name} from ${path}:`, err);
+                }
+            }
+        }
+        
         function createCollectible(x, y) {
             return {
                 type: "collectible",
@@ -1675,35 +1758,39 @@
                 width: 20,
                 height: 20,
                 collected: false,
-                floatOffset: Math.random() * Math.PI * 2, // Random starting position for float animation
-                
+                floatOffset: Math.random() * Math.PI * 2,
+                initialY: y,  // Add the missing initialY property
+
                 update: function(dt) {
-                    // Float movement with delta time (using Date.now() for smooth animation)
                     this.y = this.initialY + Math.sin(Date.now() / 500 + this.floatOffset) * 3;
                     
-                    // Check collision with player
+                    // Check if collected
                     if (!this.collected && this.collidesWith(squirrel)) {
                         this.collected = true;
                         collectiblesCollected++;
                         
-                        // Create particle effect
-                        for (let i = 0; i < 15; i++) {
+                        // Safely call playSound
+                        if (typeof playSound === 'function') {
+                            playSound('collect');
+                        }
+                        
+                        // Create particles for collection effect
+                        for (let i = 0; i < 10; i++) {
                             createParticle(
                                 this.x + this.width/2,
                                 this.y + this.height/2,
                                 (Math.random() - 0.5) * 3,
                                 (Math.random() - 0.5) * 3,
-                                Math.random() * 3 + 2,
-                                40,
-                                `rgba(255, 215, 0, ${Math.random() * 0.5 + 0.5})`
+                                Math.random() * 3 + 1,
+                                30,
+                                '#FFD700'
                             );
                         }
                         
-                        // Spawn a new collectible immediately
-                        spawnRandomCollectible();
-                        
-                        // Check for win condition
-                        checkWinCondition();
+                        // Check if all collectibles are collected
+                        if (collectiblesCollected >= totalCollectibles && !portal) {
+                            spawnPortal();
+                        }
                     }
                     
                     return !this.collected;
@@ -1728,34 +1815,32 @@
                     let drawX = this.x - camera.x;
                     let drawY = this.y - camera.y;
                     
-                    // Glowing effect
+                    // Draw glow
                     ctx.save();
-                    ctx.globalAlpha = 0.3 + Math.sin(Date.now() / 200) * 0.1;
-                    ctx.fillStyle = "#FFFF80";
+                    ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200) * 0.2;
+                    ctx.fillStyle = '#FFD700';
                     ctx.beginPath();
-                    ctx.arc(drawX + this.width/2, drawY + this.height/2, this.width/1.5, 0, Math.PI * 2);
+                    ctx.arc(drawX + this.width/2, drawY + this.height/2, this.width/2 + 5, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.restore();
                     
-                    // Golden acorn
-                    ctx.fillStyle = "#FFD700"; // Gold
+                    // Draw acorn
+                    ctx.fillStyle = '#8B4513';
                     ctx.beginPath();
-                    ctx.arc(drawX + this.width/2, drawY + this.height/2, this.width/2, 0, Math.PI * 2);
+                    ctx.ellipse(drawX + this.width/2, drawY + this.height/2, this.width/2, this.height/2, 0, 0, Math.PI * 2);
                     ctx.fill();
                     
-                    // Cap
-                    ctx.fillStyle = "#8B4513"; // Brown
+                    // Draw details
+                    ctx.fillStyle = '#A0522D';
                     ctx.beginPath();
-                    ctx.arc(drawX + this.width/2, drawY + this.height/4, this.width/3, 0, Math.PI, true);
+                    ctx.ellipse(drawX + this.width/2, drawY + this.height/2 - 2, this.width/3, this.height/4, 0, 0, Math.PI * 2);
                     ctx.fill();
                     
-                    // Highlight
-                    ctx.fillStyle = "#FFFFFF";
-                    ctx.globalAlpha = 0.6;
+                    // Draw cap
+                    ctx.fillStyle = '#8B4513';
                     ctx.beginPath();
-                    ctx.arc(drawX + this.width/2 - 3, drawY + this.height/2 - 3, this.width/6, 0, Math.PI * 2);
+                    ctx.arc(drawX + this.width/2, drawY + this.height/3, this.width/3, 0, Math.PI, true);
                     ctx.fill();
-                    ctx.globalAlpha = 1.0;
                 }
             };
         }
@@ -1909,47 +1994,51 @@
         }
         
         // Function to spawn a collectible in a random accessible location
-        function spawnRandomCollectible() {
-            // Get potential platform areas
-            let potentialSpots = [];
+        function spawnRandomCollectible(maxAttempts = 50) {
+            if (maxAttempts <= 0) {
+                console.log("Could not find a valid position for collectible after maximum attempts");
+                return; // Prevent infinite recursion by stopping after max attempts
+            }
             
-            // Look through the level map for platform tops
-            for (let y = 0; y < levelMap.length - 1; y++) {
-                for (let x = 0; x < levelMap[y].length; x++) {
-                    // Check if there's a solid block below and empty space above
-                    if ((levelMap[y+1][x] === 1 || levelMap[y+1][x] === 3) && 
-                        levelMap[y][x] === 0 &&
-                        (y > 0 && levelMap[y-1][x] === 0)) {
-                        potentialSpots.push({x: x * TILE_SIZE + TILE_SIZE/2, y: y * TILE_SIZE + TILE_SIZE/2});
-                    }
+            // Make sure these variables are defined
+            if (typeof playerStartX === 'undefined') playerStartX = 100;
+            if (typeof playerStartY === 'undefined') playerStartY = 100;
+            
+            // Try to find a suitable position
+            let x = Math.floor(Math.random() * (levelWidth / TILE_SIZE - 2)) + 1;
+            let y = Math.floor(Math.random() * (levelHeight / TILE_SIZE - 2)) + 1;
+            
+            // Check if position is valid (not inside a wall)
+            if (levelMap[y] && levelMap[y][x] !== 0) {
+                return spawnRandomCollectible(maxAttempts - 1);
+            }
+            
+            // Check if too close to player start
+            if (Math.abs(x * TILE_SIZE - playerStartX) < 200 && Math.abs(y * TILE_SIZE - playerStartY) < 200) {
+                return spawnRandomCollectible(maxAttempts - 1);
+            }
+            
+            // Check if too close to existing collectibles
+            let tooClose = false;
+            for (let i = 0; i < collectibles.length; i++) {
+                let dx = x * TILE_SIZE - collectibles[i].x;
+                let dy = y * TILE_SIZE - collectibles[i].y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < 100) {
+                    tooClose = true;
+                    break;
                 }
             }
             
-            if (potentialSpots.length > 0) {
-                // Select a random spot
-                let spot = potentialSpots[Math.floor(Math.random() * potentialSpots.length)];
-                
-                // Make sure we're not placing collectibles too close to each other
-                let tooClose = false;
-                for (let i = 0; i < collectibles.length; i++) {
-                    let dx = collectibles[i].x - (spot.x - 10);
-                    let dy = collectibles[i].y - (spot.y - 10);
-                    let distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance < 100) { // Minimum distance between collectibles
-                        tooClose = true;
-                        break;
-                    }
-                }
-                
-                // If not too close to existing collectibles, add it
-                if (!tooClose) {
-                    collectibles.push(createCollectible(spot.x - 10, spot.y - 10)); // Center on the spot
-                } else {
-                    // Try again with a different spot
-                    spawnRandomCollectible();
-                }
+            if (tooClose) {
+                return spawnRandomCollectible(maxAttempts - 1);
             }
+            
+            // Position is valid, create collectible
+            let collectible = createCollectible(x * TILE_SIZE, y * TILE_SIZE);
+            collectibles.push(collectible);
+            totalCollectibles++;  // Now this will work properly
         }
         
         // Win condition check
@@ -2136,6 +2225,65 @@
         
         // Initial draw to show the start screen
         drawLevel(ctx);
+        
+        // Add touch controls for mobile devices
+        function initTouchControls() {
+            canvas.addEventListener('touchstart', handleTouchStart, false);
+            canvas.addEventListener('touchend', handleTouchEnd, false);
+            
+            // Create touch buttons
+            let leftButton = document.createElement('div');
+            leftButton.id = 'leftButton';
+            leftButton.className = 'touchButton';
+            leftButton.innerHTML = '←';
+            document.body.appendChild(leftButton);
+            
+            let rightButton = document.createElement('div');
+            rightButton.id = 'rightButton';
+            rightButton.className = 'touchButton';
+            rightButton.innerHTML = '→';
+            document.body.appendChild(rightButton);
+            
+            let jumpButton = document.createElement('div');
+            jumpButton.id = 'jumpButton';
+            jumpButton.className = 'touchButton';
+            jumpButton.innerHTML = '↑';
+            document.body.appendChild(jumpButton);
+            
+            let attackButton = document.createElement('div');
+            attackButton.id = 'attackButton';
+            attackButton.className = 'touchButton';
+            attackButton.innerHTML = 'A';
+            document.body.appendChild(attackButton);
+            
+            // Set up touch events
+            leftButton.addEventListener('touchstart', () => { leftPressed = true; });
+            leftButton.addEventListener('touchend', () => { leftPressed = false; });
+            
+            rightButton.addEventListener('touchstart', () => { rightPressed = true; });
+            rightButton.addEventListener('touchend', () => { rightPressed = false; });
+            
+            jumpButton.addEventListener('touchstart', () => { jumpPressed = true; });
+            jumpButton.addEventListener('touchend', () => { jumpPressed = false; });
+            
+            attackButton.addEventListener('touchstart', () => { attackPressed = true; });
+            attackButton.addEventListener('touchend', () => { attackPressed = false; });
+        }
+        
+        // Initialize touch controls if on mobile device
+        if ('ontouchstart' in window) {
+            initTouchControls();
+        }
+        
+        // Call loadSounds in your initialization function
+        function initGame() {
+            // ... existing initialization code ...
+            
+            // Load sounds
+            loadSounds();
+            
+            // ... rest of initialization ...
+        }
     </script>
 </body>
 </html>
