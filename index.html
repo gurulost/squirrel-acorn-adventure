@@ -196,8 +196,16 @@
         let gameRunning = false;
         let gameWon = false;
         let keys = {};
-        let spaceReleased = true;
+        let spaceReleased = true; // For keyboard
         let collectiblesCollected = 0;
+
+        // Touch control state
+        let touchActive = false;
+        let leftPressed = false;
+        let rightPressed = false;
+        let jumpPressed = false;
+        let attackPressed = false;
+        let attackReleased = true; // For touch attack
         let particles = [];
         
         // Create offscreen canvas for double buffering
@@ -266,11 +274,11 @@
                 // Movement
                 let acceleration = 0;
                 
-                if (keys.ArrowLeft) {
+                if (keys.ArrowLeft || (touchActive && leftPressed)) {
                     acceleration = -MOVEMENT_SPEED;
                     this.facingRight = false;
                 }
-                if (keys.ArrowRight) {
+                if (keys.ArrowRight || (touchActive && rightPressed)) {
                     acceleration = MOVEMENT_SPEED;
                     this.facingRight = true;
                 }
@@ -304,7 +312,7 @@
                         this.velocityY = Math.min(this.velocityY, 2); // Slower fall when wall sliding
                         
                         // Wall climbing when pressing up against a wall
-                        if (keys.ArrowUp) {
+                        if (keys.ArrowUp || (touchActive && jumpPressed)) {
                             this.wallClimbing = true;
                             this.velocityY = WALL_CLIMB_SPEED;
                             this.jumping = false;
@@ -317,7 +325,7 @@
                         this.velocityY = Math.min(this.velocityY, 2); // Slower fall when wall sliding
                         
                         // Wall climbing when pressing up against a wall
-                        if (keys.ArrowUp) {
+                        if (keys.ArrowUp || (touchActive && jumpPressed)) {
                             this.wallClimbing = true;
                             this.velocityY = WALL_CLIMB_SPEED;
                             this.jumping = false;
@@ -336,11 +344,20 @@
                 }
                 
                 // Handle jumping - only jump when on ground and not wall climbing
-                if (keys.ArrowUp && !this.wallClimbing) {
+                if ((keys.ArrowUp || (touchActive && jumpPressed)) && !this.wallClimbing) {
                     if (onGround && !this.jumping) {
                         this.velocityY = JUMP_POWER;
                         this.jumping = true;
                     }
+                }
+
+                // Handle touch attack
+                if (touchActive && attackPressed && attackReleased && gameRunning) {
+                    acorns.push(createAcorn());
+                    attackReleased = false;
+                }
+                if (touchActive && !attackPressed) {
+                    attackReleased = true;
                 }
                 
                 // Update position with collision handling
@@ -1037,7 +1054,7 @@
                             
                             // Calculate position based on swing
                             this.x = this.anchorX + Math.cos(this.swingAngle) * this.swingRadius;
-                            this.y = this.anchorY + Math.abs(Math.sin(this.swingAngle) * this.swingRadius);
+                            this.y = this.anchorY + Math.sin(this.swingAngle) * this.swingRadius;
                             
                             // Check if player is below and within range
                             if (Math.abs(squirrel.x - this.x) < this.detectionRange && 
@@ -1075,7 +1092,7 @@
                         case 'returning':
                             // Move back toward anchor point
                             let dx = this.anchorX + Math.cos(this.swingAngle) * this.swingRadius - this.x;
-                            let dy = this.anchorY + Math.abs(Math.sin(this.swingAngle) * this.swingRadius) - this.y;
+                            let dy = this.anchorY + Math.sin(this.swingAngle) * this.swingRadius - this.y;
                             let dist = Math.sqrt(dx*dx + dy*dy);
                             
                             if (dist > this.returnSpeed * dt * 60) {
@@ -1084,7 +1101,7 @@
                             } else {
                                 // Close enough to anchor, resume swinging
                                 this.x = this.anchorX + Math.cos(this.swingAngle) * this.swingRadius;
-                                this.y = this.anchorY + Math.abs(Math.sin(this.swingAngle) * this.swingRadius);
+                                this.y = this.anchorY + Math.sin(this.swingAngle) * this.swingRadius;
                                 this.state = 'swinging';
                             }
                             break;
@@ -1170,18 +1187,19 @@
                     ctx.lineWidth = 2;
                     
                     // Draw legs with animation
-                    let legOffset = this.animationFrame === 0 ? 3 : -3;
+                    let legOffset = this.animationFrame === 0 ? 3 : -3; // This is the single offset value
                     
                     // Left legs
                     for (let i = 0; i < 4; i++) {
                         let yOffset = (i - 1.5) * 5;
+                        let alternatingFactor = (i % 2 === 0 ? 1 : -1);
                         ctx.beginPath();
                         ctx.moveTo(drawX + this.width/2, drawY + this.height/2 + yOffset);
                         ctx.quadraticCurveTo(
                             drawX - 5, 
-                            drawY + this.height/2 + yOffset + ((i % 2 === 0) ? legOffset : -legOffset),
+                            drawY + this.height/2 + yOffset + alternatingFactor * legOffset,
                             drawX - 15, 
-                            drawY + this.height/2 + yOffset + ((i % 2 === 0) ? 8 : -8)
+                            drawY + this.height/2 + yOffset + ((i % 2 === 0) ? 8 : -8) 
                         );
                         ctx.stroke();
                     }
@@ -1189,11 +1207,12 @@
                     // Right legs
                     for (let i = 0; i < 4; i++) {
                         let yOffset = (i - 1.5) * 5;
+                        let alternatingFactor = (i % 2 === 0 ? 1 : -1);
                         ctx.beginPath();
                         ctx.moveTo(drawX + this.width/2, drawY + this.height/2 + yOffset);
                         ctx.quadraticCurveTo(
                             drawX + this.width + 5, 
-                            drawY + this.height/2 + yOffset + ((i % 2 === 0) ? -legOffset : legOffset),
+                            drawY + this.height/2 + yOffset - alternatingFactor * legOffset, // Note the minus
                             drawX + this.width + 15, 
                             drawY + this.height/2 + yOffset + ((i % 2 === 0) ? 8 : -8)
                         );
@@ -1366,6 +1385,7 @@
         
         // Function to initialize level and entities
         function initLevel() {
+            totalCollectibles = 0;
             // Clear existing entities and game state
             enemies = [];
             obstacles = [];
@@ -1623,14 +1643,7 @@
             }
             
             // Update particles
-            particles = particles.filter(particle => {
-                particle.x += particle.vx * dt * 60;
-                particle.y += particle.vy * dt * 60;
-                particle.vy += 0.1 * dt * 60; // Gravity
-                particle.lifetime -= dt * 60;
-                
-                return particle.lifetime > 0;
-            });
+            particles = particles.filter(particle => particle.update(dt));
         }
         
         // Spikes
@@ -2228,8 +2241,9 @@
         
         // Add touch controls for mobile devices
         function initTouchControls() {
-            canvas.addEventListener('touchstart', handleTouchStart, false);
-            canvas.addEventListener('touchend', handleTouchEnd, false);
+            touchActive = true; // Set touch as active
+            // canvas.addEventListener('touchstart', handleTouchStart, false); // handleTouchStart is not defined
+            // canvas.addEventListener('touchend', handleTouchEnd, false); // handleTouchEnd is not defined
             
             // Create touch buttons
             let leftButton = document.createElement('div');
